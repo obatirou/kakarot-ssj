@@ -1,9 +1,12 @@
+use contracts::account_contract::{IAccountDispatcher, IAccountDispatcherTrait};
 use core::num::traits::CheckedSub;
 use core::starknet::EthAddress;
 use evm::errors::{EVMError, ensure};
 use evm::memory::{Memory, MemoryTrait};
+use evm::model::account::Account;
 use evm::model::{Message, Environment, ExecutionResult, AccountTrait};
 use evm::stack::{Stack, StackTrait};
+use evm::state::{State, StateTrait};
 use utils::helpers::{SpanExtTrait, ArrayExtTrait};
 use utils::set::{Set, SetTrait, SpanSet};
 use utils::traits::{SpanDefault};
@@ -13,7 +16,6 @@ struct VM {
     stack: Stack,
     memory: Memory,
     pc: usize,
-    valid_jumpdests: Felt252Dict<bool>,
     return_data: Span<u8>,
     env: Environment,
     message: Message,
@@ -34,7 +36,6 @@ impl VMImpl of VMTrait {
             stack: Default::default(),
             memory: Default::default(),
             pc: 0,
-            valid_jumpdests: AccountTrait::get_jumpdests(message.code),
             return_data: [].span(),
             env,
             message,
@@ -70,8 +71,22 @@ impl VMImpl of VMTrait {
     }
 
     #[inline(always)]
-    fn is_valid_jump(ref self: VM, dest: u32) -> bool {
-        self.valid_jumpdests.get(dest.into())
+    fn is_valid_jump(self: @VM, index: u32) -> bool {
+        // read in the message cache or storage
+        let mut account: Account = self.env.state.get_account(*self.message.target.starknet);
+
+        if account.valid_jumpdests.values.get(index.into()) == true {
+            return true;
+        }
+
+        // cache miss for a created account means an invalid jumpdest as the valid jumpdests
+        // are cached in Account
+        if account.is_created == true {
+            return false;
+        }
+
+        return IAccountDispatcher { contract_address: *self.message.target.starknet }
+            .is_valid_jumpdest(index);
     }
 
     #[inline(always)]

@@ -137,3 +137,30 @@ fn test_ca_external_starknet_call_cannot_call_kakarot_other_selector() {
     assert(data.len() == 19, 'wrong return data length');
     assert(data == KAKAROT_REENTRANCY.span(), 'wrong return data');
 }
+
+#[test]
+fn test_ca_valid_jumpdests() {
+    let (_, kakarot_core) = setup_contracts_for_testing();
+    let ca_address = deploy_contract_account(kakarot_core, ca_address(), [].span());
+    let contract_account = IAccountDispatcher { contract_address: ca_address.starknet };
+
+    // Initially, no jump destinations should be valid
+    assert(!contract_account.is_valid_jumpdest(0), 'should not be valid initially');
+    assert(!contract_account.is_valid_jumpdest(10), 'should not be valid initially');
+
+    // Write some valid jump destinations
+    let valid_jumpdests = array![0, 5, 10].span();
+    start_cheat_caller_address(ca_address.starknet, kakarot_core.contract_address);
+    contract_account.write_valid_jumpdests(valid_jumpdests);
+    stop_cheat_caller_address(ca_address.starknet);
+
+    // Check that the written jump destinations are now valid
+    assert(contract_account.is_valid_jumpdest(0), '0 should be valid');
+    assert(contract_account.is_valid_jumpdest(5), '5 should be valid');
+    assert(contract_account.is_valid_jumpdest(10), '10 should be valid');
+
+    // Check that other jump destinations are still invalid
+    assert(!contract_account.is_valid_jumpdest(1), '1 should not be valid');
+    assert(!contract_account.is_valid_jumpdest(6), '6 should not be valid');
+    assert(!contract_account.is_valid_jumpdest(11), '11 should not be valid');
+}

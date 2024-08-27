@@ -11,7 +11,7 @@ use core::starknet::{
 use evm::backend::starknet_backend::fetch_original_storage;
 
 use evm::errors::{ensure, EVMError, WRITE_SYSCALL_FAILED, READ_SYSCALL_FAILED, BALANCE_OVERFLOW};
-use evm::model::account::{AccountTrait, AccountInternalTrait};
+use evm::model::account::{AccountTrait, AccountInternalTrait, ValidJumpdests};
 use evm::model::{Event, Transfer, Account, Address, AddressTrait};
 use openzeppelin::token::erc20::interface::{IERC20CamelDispatcher, IERC20CamelDispatcherTrait};
 use utils::helpers::{ArrayExtTrait, ResultExTrait};
@@ -37,13 +37,19 @@ struct StateChangeLog<T> {
     keyset: Set<felt252>,
 }
 
+impl Felt252DictDestruct<T, +Destruct<T>> of Destruct<Felt252Dict<Nullable<T>>> {
+    fn destruct(self: Felt252Dict<Nullable<T>>) nopanic {
+        self.squash();
+    }
+}
+
 impl StateChangeLogDestruct<T, +Drop<T>> of Destruct<StateChangeLog<T>> {
     fn destruct(self: StateChangeLog<T>) nopanic {
         self.changes.squash();
     }
 }
 
-impl StateChangeLogDefault<T, +Drop<T>> of Default<StateChangeLog<T>> {
+impl StateChangeLogDefault<T, +Destruct<T>> of Default<StateChangeLog<T>> {
     fn default() -> StateChangeLog<T> {
         StateChangeLog { changes: Default::default(), keyset: Default::default(), }
     }
@@ -98,6 +104,7 @@ impl StateChangeLogImpl<T, +Drop<T>, +Copy<T>> of StateChangeLogTrait<T> {
     }
 }
 
+
 #[derive(Default, Destruct)]
 struct State {
     /// Accounts states - without storage and balances, which are handled separately.
@@ -118,6 +125,7 @@ struct State {
     /// `u256` indicates the value stored.
     transient_account_storage: StateChangeLog<(EthAddress, u256, u256)>,
 }
+
 
 #[generate_trait]
 impl StateImpl of StateTrait {

@@ -71,6 +71,8 @@ impl EVMImpl of EVMTrait {
             target_account.set_nonce(1);
             // Set the target as created
             target_account.set_created(true);
+            // set valid jumpdests
+            target_account.set_valid_jumpdests(AccountTrait::compute_valid_jumpdests(message.code));
             target_account.address = message.target;
             env.state.set_account(target_account);
         }

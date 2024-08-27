@@ -1,6 +1,7 @@
 use contracts::account_contract::{IAccountDispatcher, IAccountDispatcherTrait, IAccount};
 use contracts::kakarot_core::kakarot::KakarotCore::KakarotCoreInternal;
 use contracts::kakarot_core::{KakarotCore, IKakarotCore};
+use core::dict::Felt252DictTrait; // Add this import
 use core::num::traits::Zero;
 use core::starknet::{
     ContractAddress, EthAddress, get_contract_address, deploy_syscall, get_tx_info,
@@ -14,11 +15,18 @@ use evm::state::State;
 use evm::state::StateTrait;
 use openzeppelin::token::erc20::interface::{IERC20CamelDispatcher, IERC20CamelDispatcherTrait};
 use utils::helpers::{ResultExTrait, ByteArrayExTrait, compute_starknet_address};
-
-#[derive(Drop)]
+use utils::set::{Set, SetTrait};
+use utils::traits::SpanDefault;
 struct AccountBuilder {
     account: Account
 }
+
+impl AccountBuilderDestruct of Destruct<AccountBuilder> {
+    fn destruct(self: AccountBuilder) nopanic {
+        self.account.valid_jumpdests.values.squash();
+    }
+}
+
 
 #[generate_trait]
 impl AccountBuilderImpl of AccountBuilderTrait {
@@ -30,7 +38,8 @@ impl AccountBuilderImpl of AccountBuilderTrait {
                 nonce: 0,
                 balance: 0,
                 selfdestruct: false,
-                is_created: false
+                is_created: false,
+                valid_jumpdests: Default::default()
             }
         }
     }
@@ -67,7 +76,15 @@ impl AccountBuilderImpl of AccountBuilderTrait {
     }
 }
 
-#[derive(Copy, Drop, PartialEq)]
+// other implementation would be an array and use contains but not great
+// will depend if it is possible to squash a dict with dict inside
+// Not possible for now it seems
+#[derive(Default, Destruct)]
+struct ValidJumpdests {
+    keyset: Set<felt252>,
+    values: Felt252Dict<bool>,
+}
+#[derive(Default, Destruct)]
 struct Account {
     address: Address,
     code: Span<u8>,
@@ -75,6 +92,7 @@ struct Account {
     balance: u256,
     selfdestruct: bool,
     is_created: bool,
+    valid_jumpdests: ValidJumpdests, // needs to be written in the state commitment
 }
 
 #[generate_trait]
@@ -197,6 +215,7 @@ impl AccountImpl of AccountTrait {
     #[inline(always)]
     fn set_code(ref self: Account, code: Span<u8>) {
         self.code = code;
+        self.valid_jumpdests = Self::compute_valid_jumpdests(code);
     }
 
     /// Registers an account for SELFDESTRUCT
@@ -213,6 +232,25 @@ impl AccountImpl of AccountTrait {
         *self.selfdestruct
     }
 
+    /// Set the valid jumpdests of the account
+    #[inline(always)]
+    fn set_valid_jumpdests(ref self: Account, valid_jumpdests: ValidJumpdests) {
+        self.valid_jumpdests = valid_jumpdests;
+    }
+
+    fn get_valid_jumpdests(ref self: Account) -> Span<u32> {
+        // use a key set to iterate over the valid jumpdests
+        let mut jumpdests: Array<u32> = array![];
+        let mut keys = self.valid_jumpdests.keyset.to_span();
+        while let Option::Some(key) = keys.pop_front() {
+            let value = self.valid_jumpdests.values.get(*key);
+            if value {
+                jumpdests.append((*key).try_into().unwrap());
+            }
+        };
+        return jumpdests.span();
+    }
+
     /// Initializes a dictionary of valid jump destinations in EVM bytecode.
     ///
     /// This function iterates over the bytecode from the current index 'i'.
@@ -226,8 +264,8 @@ impl AccountImpl of AccountTrait {
     ///
     /// # Returns
     /// A dictionary of valid jump destinations in the bytecode
-    fn get_jumpdests(mut bytecode: Span<u8>) -> Felt252Dict<bool> {
-        let mut jumpdests: Felt252Dict<bool> = Default::default();
+    fn compute_valid_jumpdests(mut bytecode: Span<u8>) -> ValidJumpdests {
+        let mut jumpdests: ValidJumpdests = Default::default();
         let mut i: usize = 0;
         while i < bytecode.len() {
             let opcode = *bytecode[i];
@@ -239,7 +277,8 @@ impl AccountImpl of AccountTrait {
             }
 
             if opcode == 0x5b {
-                jumpdests.insert(i.into(), true);
+                jumpdests.values.insert(i.into(), true);
+                jumpdests.keyset.add(i.into());
             }
 
             i += 1;

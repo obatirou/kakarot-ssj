@@ -17,6 +17,7 @@ mod test_utils;
 
 // Account transparent proxy
 mod uninitialized_account;
+mod valid_jumpdest;
 
 //TODO: hide this behind a feature flag
 mod test_contracts {

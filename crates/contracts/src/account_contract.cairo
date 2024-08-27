@@ -30,6 +30,8 @@ pub trait IAccount<TContractState> {
     fn get_nonce(self: @TContractState) -> u64;
     fn set_nonce(ref self: TContractState, nonce: u64);
     fn execute_starknet_call(ref self: TContractState, call: Call) -> (bool, Span<felt252>);
+    fn is_valid_jumpdest(self: @TContractState, relativeIndex: u32) -> bool;
+    fn write_valid_jumpdests(ref self: TContractState, valid_jumpdests: Span<u32>);
 }
 
 #[starknet::contract(account)]
@@ -43,6 +45,9 @@ pub mod AccountContract {
     };
     use contracts::kakarot_core::interface::{IKakarotCoreDispatcher, IKakarotCoreDispatcherTrait};
     use contracts::storage::StorageBytecode;
+    use contracts::valid_jumpdest::{
+        ValidJumpdest, ValidJumpdestReadAccess, ValidJumpdestWriteAccess
+    };
     use core::integer;
     use core::num::traits::Bounded;
     use core::num::traits::zero::Zero;
@@ -90,6 +95,7 @@ pub mod AccountContract {
         Account_implementation: ClassHash,
         Account_evm_address: EthAddress,
         Account_code_hash: u256,
+        Account_valid_jumpdests: ValidJumpdest<u32, bool>,
         #[substorage(v0)]
         ownable: ownable_component::Storage
     }
@@ -288,6 +294,20 @@ pub mod AccountContract {
                 return (true, response.unwrap().into());
             }
             return (false, response.unwrap_err().into());
+        }
+
+        fn write_valid_jumpdests(ref self: ContractState, valid_jumpdests: Span<u32>) {
+            self.ownable.assert_only_owner();
+            let length: usize = valid_jumpdests.len();
+            let mut i: usize = 0;
+            while i < length {
+                self.Account_valid_jumpdests.write(*valid_jumpdests[i], true);
+                i = i + 1;
+            }
+        }
+
+        fn is_valid_jumpdest(self: @ContractState, relativeIndex: u32) -> bool {
+            return self.Account_valid_jumpdests.read(relativeIndex);
         }
     }
 

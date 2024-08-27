@@ -166,7 +166,7 @@ mod internals {
     /// # Returns
     ///
     /// `Ok(())` if the commit was successful, otherwise an `EVMError`.
-    fn commit(self: @Account, ref state: State) {
+    fn commit(ref self: Account, ref state: State) {
         if self.evm_address().is_precompile() {
             return;
         }
@@ -204,14 +204,14 @@ mod internals {
         //TODO: storage commits are done in the State commitment as they're not part of the account
         //model in SSJ
         let starknet_account = IAccountDispatcher { contract_address: self.starknet_address() };
-        starknet_account.set_nonce(*self.nonce);
+        starknet_account.set_nonce(self.nonce);
 
         //Storage is handled outside of the account and must be committed after all accounts are
         //committed.
         if self.is_created() {
             starknet_account.write_bytecode(self.bytecode());
-            //TODO: save valid jumpdests https://github.com/kkrt-labs/kakarot-ssj/issues/839
-        //TODO: set code hash https://github.com/kkrt-labs/kakarot-ssj/issues/840
+            starknet_account.write_valid_jumpdests(self.get_valid_jumpdests());
+            //TODO: set code hash https://github.com/kkrt-labs/kakarot-ssj/issues/840
         }
         return;
     }

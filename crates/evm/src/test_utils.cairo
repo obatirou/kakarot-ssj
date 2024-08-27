@@ -110,7 +110,7 @@ impl VMBuilderImpl of VMBuilderTrait {
     }
 
     fn build(mut self: VMBuilder) -> VM {
-        self.vm.valid_jumpdests = AccountTrait::get_jumpdests(self.vm.message.code);
+        self.vm.valid_jumpdests = AccountTrait::compute_valid_jumpdests(self.vm.message.code);
         return self.vm;
     }
 
@@ -263,7 +263,6 @@ fn preset_vm() -> VM {
         stack: Default::default(),
         memory: Default::default(),
         pc: 0,
-        valid_jumpdests: AccountTrait::get_jumpdests(message.code),
         return_data,
         env: environment,
         message,

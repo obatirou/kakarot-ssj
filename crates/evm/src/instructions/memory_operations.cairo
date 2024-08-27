@@ -18,6 +18,8 @@ use utils::set::SetTrait;
 #[inline(always)]
 fn jump(ref self: VM, index: usize) -> Result<(), EVMError> {
     match self.message().code.get(index) {
+        // read in the message or account cache if the jumpdest is valid
+        // if not in cache, read from storage by calling account contract
         Option::Some(_) => { ensure(self.is_valid_jump(index), EVMError::InvalidJump)?; },
         Option::None => { return Result::Err(EVMError::InvalidJump); }
     }
